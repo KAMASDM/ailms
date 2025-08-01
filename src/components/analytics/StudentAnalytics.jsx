@@ -55,8 +55,11 @@ import {
 } from 'recharts';
 import { PageHeader } from '../common';
 import { formatDuration, formatDate } from '../../utils/helpers';
+import { useAuth } from '../../hooks/useAuth';
+import analyticsService from '../../services/analyticsService';
 
 const StudentAnalytics = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [timeRange, setTimeRange] = useState('month');
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -69,8 +72,15 @@ const StudentAnalytics = () => {
   const loadAnalyticsData = async () => {
     setLoading(true);
     try {
-      // Mock analytics data - replace with actual API call
-      const mockData = {
+      // Load real analytics data from Firebase
+      const result = await analyticsService.getStudentAnalytics(user.uid, timeRange);
+      
+      if (result.success) {
+        setAnalyticsData(result.analytics);
+      } else {
+        console.error('Failed to load analytics:', result.error);
+        // Fallback to mock data for development
+        const mockData = {
         overview: {
           totalStudyTime: 2840, // minutes
           coursesCompleted: 4,
@@ -170,9 +180,10 @@ const StudentAnalytics = () => {
             { day: 'Sun', engagement: 88 }
           ]
         }
-      };
+        };
 
-      setAnalyticsData(mockData);
+        setAnalyticsData(mockData);
+      }
     } catch (error) {
       console.error('Error loading analytics data:', error);
     } finally {

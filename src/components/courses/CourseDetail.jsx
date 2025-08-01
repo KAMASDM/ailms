@@ -49,6 +49,8 @@ import {
 import { PageHeader, Loading } from '../common';
 import { formatDuration, formatDate } from '../../utils/helpers';
 import { useAuth } from '../../hooks/useAuth';
+import courseService from '../../services/courseService';
+import userService from '../../services/userService';
 
 const CourseDetail = () => {
   const { id } = useParams();
@@ -69,8 +71,25 @@ const CourseDetail = () => {
   const loadCourseDetail = async () => {
     setLoading(true);
     try {
-      // Mock data - replace with actual API call
-      const mockCourse = {
+      // Load course data from Firebase
+      const courseResult = await courseService.getCourse(id);
+      
+      if (courseResult.success) {
+        setCourse(courseResult.course);
+        
+        // Check if user is enrolled
+        if (user) {
+          const enrollmentResult = await courseService.checkEnrollment(user.uid, id);
+          setIsEnrolled(enrollmentResult.success && enrollmentResult.isEnrolled);
+          
+          // Check if course is bookmarked
+          const bookmarkResult = await userService.isBookmarked(user.uid, id);
+          setIsBookmarked(bookmarkResult.success && bookmarkResult.isBookmarked);
+        }
+      } else {
+        console.error('Failed to load course:', courseResult.error);
+        // Fallback to mock data for development
+        const mockCourse = {
         id: id,
         title: 'Deep Learning Fundamentals',
         description: 'Master the foundations of deep learning and neural networks. This comprehensive course covers everything from basic perceptrons to advanced architectures like CNNs, RNNs, and Transformers.',
@@ -159,12 +178,12 @@ const CourseDetail = () => {
         ]
       };
 
-      setCourse(mockCourse);
-      
-      // Check if user is enrolled (mock)
-      setIsEnrolled(false);
-      setIsBookmarked(false);
-      
+        setCourse(mockCourse);
+        
+        // Check if user is enrolled (mock)
+        setIsEnrolled(false);
+        setIsBookmarked(false);
+      }
     } catch (error) {
       console.error('Error loading course:', error);
     } finally {
@@ -181,13 +200,27 @@ const CourseDetail = () => {
     }
   };
 
-  const enrollInCourse = () => {
-    // Implementation for course enrollment
-    console.log('Enrolling in course:', course.id);
-    setIsEnrolled(true);
-    setShowEnrollDialog(false);
-    // Navigate to course learning page
-    navigate(`/course/${course.id}/learn`);
+  const enrollInCourse = async () => {
+    try {
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      const result = await courseService.enrollInCourse(user.uid, course.id);
+      
+      if (result.success) {
+        setIsEnrolled(true);
+        setShowEnrollDialog(false);
+        // Navigate to course learning page
+        navigate(`/course/${course.id}/learn`);
+      } else {
+        console.error('Failed to enroll:', result.error);
+        // Show error notification
+      }
+    } catch (error) {
+      console.error('Error enrolling in course:', error);
+    }
   };
 
   const handleBookmark = () => {
@@ -202,7 +235,7 @@ const CourseDetail = () => {
   const getTotalDuration = () => {
     if (!course?.curriculum) return 0;
     return course.curriculum.reduce((total, module) => {
-      return total + module.lessons.reduce((moduleTotal, lesson) => moduleTotal + lesson.duration, 0);
+      return total + (module.lessons?.reduce((moduleTotal, lesson) => moduleTotal + lesson.duration, 0) || 0);
     }, 0);
   };
 
@@ -213,7 +246,7 @@ const CourseDetail = () => {
 
   const getTotalLessons = () => {
     if (!course?.curriculum) return 0;
-    return course.curriculum.reduce((total, module) => total + module.lessons.length, 0);
+    return course.curriculum.reduce((total, module) => total + (module.lessons?.length || 0), 0);
   };
 
   if (loading) {
@@ -281,7 +314,7 @@ const CourseDetail = () => {
                     What You'll Learn
                   </Typography>
                   <List>
-                    {course.whatYouWillLearn.map((item, index) => (
+                    {course.whatYouWillLearn?.map((item, index) => (
                       <ListItem key={index}>
                         <ListItemIcon>
                           <CheckIcon color="success" />
@@ -295,7 +328,7 @@ const CourseDetail = () => {
                     Requirements
                   </Typography>
                   <List>
-                    {course.requirements.map((item, index) => (
+                    {course.requirements?.map((item, index) => (
                       <ListItem key={index}>
                         <ListItemIcon>
                           <CheckIcon color="primary" />
@@ -314,22 +347,22 @@ const CourseDetail = () => {
                     Course Content
                   </Typography>
                   <Typography variant="body2" color="text.secondary" gutterBottom>
-                    {course.curriculum.length} modules • {getTotalLessons()} lessons • {formatDuration(getTotalDuration())} total
+                    {course.curriculum?.length || 0} modules • {getTotalLessons()} lessons • {formatDuration(getTotalDuration())} total
                   </Typography>
 
-                  {course.curriculum.map((module) => (
+                  {course.curriculum?.map((module) => (
                     <Accordion key={module.id} sx={{ mt: 1 }}>
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Typography variant="subtitle1" fontWeight="bold">
                           {module.title}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', mr: 2 }}>
-                          {module.lessons.length} lessons
+                          {module.lessons?.length || 0} lessons
                         </Typography>
                       </AccordionSummary>
                       <AccordionDetails>
                         <List dense>
-                          {module.lessons.map((lesson) => (
+                          {module.lessons?.map((lesson) => (
                             <ListItem key={lesson.id}>
                               <ListItemIcon>
                                 {lesson.isPreview ? (
@@ -557,7 +590,7 @@ const CourseDetail = () => {
                 </Typography>
                 
                 <List dense>
-                  {course.features.map((feature, index) => (
+                  {course.features?.map((feature, index) => (
                     <ListItem key={index}>
                       <ListItemIcon><CheckIcon color="success" /></ListItemIcon>
                       <ListItemText primary={feature} />

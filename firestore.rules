@@ -1,0 +1,258 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User profiles - users can only read/write their own profile, others can read basic info
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Courses collection
+    match /courses/{courseId} {
+      // Anyone authenticated can read published courses
+      allow read: if request.auth != null && resource.data.status == 'published';
+      
+      // Course creators can read their own courses (any status)
+      allow read: if request.auth != null && request.auth.uid == resource.data.instructorId;
+      
+      // Anyone can read courses for browsing (needed for course discovery)
+      allow read: if request.auth != null;
+      
+      // Only the course instructor can create/update their courses
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.instructorId &&
+                    request.resource.data.instructorId is string;
+      
+      allow update: if request.auth != null && 
+                    request.auth.uid == resource.data.instructorId &&
+                    request.auth.uid == request.resource.data.instructorId;
+      
+      // Only the course instructor can delete their courses
+      allow delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
+    }
+    
+    // Course enrollments
+    match /enrollments/{enrollmentId} {
+      // Students can read their own enrollments
+      allow read: if request.auth != null && 
+                  (request.auth.uid == resource.data.studentId || 
+                   request.auth.uid == resource.data.instructorId);
+      
+      // Students can create enrollments for themselves
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.studentId;
+      
+      // Students can update their own enrollment progress
+      allow update: if request.auth != null && 
+                    request.auth.uid == resource.data.studentId;
+      
+      // Only allow deletion by the student who enrolled
+      allow delete: if request.auth != null && request.auth.uid == resource.data.studentId;
+    }
+    
+    // User progress tracking
+    match /progress/{progressId} {
+      // Users can read/write their own progress
+      allow read, write: if request.auth != null && 
+                          request.auth.uid == resource.data.userId;
+    }
+    
+    // Quizzes - similar to courses but with some additional restrictions
+    match /quizzes/{quizId} {
+      // Anyone can read published quizzes
+      allow read: if request.auth != null && resource.data.status == 'published';
+      
+      // Quiz creators can read their own quizzes (fixed field name)
+      allow read: if request.auth != null && request.auth.uid == resource.data.instructorId;
+      
+      // Anyone authenticated can read quizzes for discovery
+      allow read: if request.auth != null;
+      
+      // Only authenticated users can create quizzes (fixed field name)
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.instructorId;
+      
+      // Only quiz creators can update their quizzes (fixed field name)
+      allow update: if request.auth != null && request.auth.uid == resource.data.instructorId;
+      
+      // Only quiz creators can delete their quizzes (fixed field name)
+      allow delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
+    }
+    
+    // Quiz attempts (renamed from quiz_submissions to match service)
+    match /quiz_attempts/{attemptId} {
+      // Users can read their own attempts, instructors can read attempts for their quizzes
+      allow read: if request.auth != null && 
+                  (request.auth.uid == resource.data.studentId ||
+                   request.auth.uid == resource.data.instructorId);
+      
+      // Students can create their own attempts
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.studentId;
+      
+      // Students can update their attempts (for progress tracking)
+      allow update: if request.auth != null && request.auth.uid == resource.data.studentId;
+      
+      // Students can delete their own attempts
+      allow delete: if request.auth != null && request.auth.uid == resource.data.studentId;
+    }
+    
+    // Quiz questions (separate collection)
+    match /quiz_questions/{questionId} {
+      // Anyone can read questions for published quizzes
+      allow read: if request.auth != null;
+      
+      // Quiz creators can create/update/delete questions
+      allow create, update, delete: if request.auth != null && 
+                                   request.auth.uid == resource.data.instructorId;
+    }
+    
+    // Platform statistics and features (read-only for most users)
+    match /platform/{document} {
+      // Anyone authenticated can read platform data
+      allow read: if request.auth != null;
+      
+      // Only admin users can write platform data (you can add admin check)
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Platform statistics
+    match /platformStats/{statId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Platform features
+    match /platformFeatures/{featureId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Platform benefits
+    match /platformBenefits/{benefitId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Testimonials
+    match /testimonials/{testimonialId} {
+      // Anyone can read published testimonials
+      allow read: if request.auth != null;
+      
+      // Users can create testimonials
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.userId;
+      
+      // Users can update their own testimonials
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // Users can delete their own testimonials
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Communication/Messages
+    match /messages/{messageId} {
+      // Users can read messages where they are sender or recipient
+      allow read: if request.auth != null && 
+                  (request.auth.uid == resource.data.senderId || 
+                   request.auth.uid == resource.data.recipientId);
+      
+      // Users can create messages where they are the sender
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.senderId;
+      
+      // No updates to messages (for integrity)
+      allow update: if false;
+      
+      // Senders can delete their messages
+      allow delete: if request.auth != null && request.auth.uid == resource.data.senderId;
+    }
+    
+    // Certificates
+    match /certificates/{certificateId} {
+      // Users can read their own certificates
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // System/instructors can create certificates
+      allow create: if request.auth != null;
+      
+      // No updates to certificates (for integrity)
+      allow update: if false;
+      
+      // No deletion of certificates
+      allow delete: if false;
+    }
+    
+    // Bookmarks
+    match /bookmarks/{bookmarkId} {
+      // Users can read/write their own bookmarks
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Notifications
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // System can create notifications for users
+      allow create: if request.auth != null;
+      
+      // Users can update their own notifications (mark as read)
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // Users can delete their own notifications
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Achievements/Badges
+    match /achievements/{achievementId} {
+      // Users can read their own achievements
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // System can create achievements for users
+      allow create: if request.auth != null;
+      
+      // No updates to achievements (for integrity)
+      allow update: if false;
+      
+      // No deletion of achievements
+      allow delete: if false;
+    }
+    
+    // Live sessions
+    match /live_sessions/{sessionId} {
+      // Anyone can read published live sessions
+      allow read: if request.auth != null;
+      
+      // Instructors can create/update/delete their live sessions
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.instructorId;
+      allow update: if request.auth != null && request.auth.uid == resource.data.instructorId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
+    }
+    
+    // Live session participants
+    match /session_participants/{participantId} {
+      // Participants and instructors can read
+      allow read: if request.auth != null && 
+                  (request.auth.uid == resource.data.userId ||
+                   request.auth.uid == resource.data.instructorId);
+      
+      // Users can join sessions
+      allow create: if request.auth != null && 
+                    request.auth.uid == request.resource.data.userId;
+      
+      // Users can update their participation status
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // Users can leave sessions
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Fallback rule for any other collections (restrictive)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

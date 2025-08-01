@@ -40,10 +40,11 @@ import { PageHeader, ConfirmDialog } from '../common';
 import { formatDuration, formatDate } from '../../utils/helpers';
 import { useAuth } from '../../hooks/useAuth';
 import { USER_TYPES } from '../../utils/constants';
+import quizService from '../../services/quizService';
 
-const QuizList = ({ courseId = null }) => {
+const QuizList = ({ courseId = null, variant = 'student' }) => {
   const navigate = useNavigate();
-  const { userType } = useAuth();
+  const { user, userType } = useAuth();
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
@@ -58,126 +59,71 @@ const QuizList = ({ courseId = null }) => {
   const loadQuizzes = async () => {
     setLoading(true);
     try {
-      // Mock data - replace with actual API call
-      const mockQuizzes = [
-        {
-          id: 1,
-          title: 'Deep Learning Fundamentals Quiz',
-          description: 'Test your understanding of neural networks and deep learning concepts.',
-          courseId: 1,
-          courseName: 'Deep Learning Fundamentals',
-          instructor: {
-            name: 'Dr. Sarah Chen',
-            avatar: '/api/placeholder/40/40'
-          },
-          duration: 1800, // 30 minutes
-          totalQuestions: 15,
-          totalPoints: 150,
-          passingScore: 80,
-          maxAttempts: 3,
-          isPublished: true,
-          createdAt: new Date('2024-01-15'),
-          // Student-specific data
-          status: 'available', // available, completed, locked
-          attempts: [
-            {
-              id: 1,
-              score: 85,
-              passed: true,
-              completedAt: new Date('2024-01-20'),
-              timeSpent: 1620
-            }
-          ],
-          bestScore: 85,
-          attemptsUsed: 1
-        },
-        {
-          id: 2,
-          title: 'Computer Vision Basics Quiz',
-          description: 'Assessment on image processing and computer vision fundamentals.',
-          courseId: 2,
-          courseName: 'Computer Vision Basics',
-          instructor: {
-            name: 'Prof. Mike Johnson',
-            avatar: '/api/placeholder/40/40'
-          },
-          duration: 2400, // 40 minutes
-          totalQuestions: 20,
-          totalPoints: 200,
-          passingScore: 75,
-          maxAttempts: 2,
-          isPublished: true,
-          createdAt: new Date('2024-01-10'),
-          status: 'available',
-          attempts: [],
-          bestScore: null,
-          attemptsUsed: 0
-        },
-        {
-          id: 3,
-          title: 'Neural Network Architecture Quiz',
-          description: 'Advanced quiz on different neural network architectures.',
-          courseId: 1,
-          courseName: 'Deep Learning Fundamentals',
-          instructor: {
-            name: 'Dr. Sarah Chen',
-            avatar: '/api/placeholder/40/40'
-          },
-          duration: 1200, // 20 minutes
-          totalQuestions: 10,
-          totalPoints: 100,
-          passingScore: 80,
-          maxAttempts: 3,
-          isPublished: userType === USER_TYPES.TUTOR ? false : true,
-          createdAt: new Date('2024-01-25'),
-          status: 'locked',
-          attempts: [],
-          bestScore: null,
-          attemptsUsed: 0
-        }
-      ];
-
-      // Filter based on tab and user type
-      let filteredQuizzes = mockQuizzes;
+      let result;
       
-      if (courseId) {
-        filteredQuizzes = filteredQuizzes.filter(quiz => quiz.courseId === courseId);
-      }
-
-      if (userType === USER_TYPES.STUDENT) {
-        switch (activeTab) {
-          case 0: // Available
-            filteredQuizzes = filteredQuizzes.filter(quiz => 
-              quiz.isPublished && quiz.status === 'available'
-            );
-            break;
-          case 1: // Completed
-            filteredQuizzes = filteredQuizzes.filter(quiz => 
-              quiz.attempts.length > 0 && quiz.attempts.some(attempt => attempt.passed)
-            );
-            break;
-          case 2: // All
-            filteredQuizzes = filteredQuizzes.filter(quiz => quiz.isPublished);
-            break;
-        }
+      if (userType === USER_TYPES.TUTOR || variant === 'tutor') {
+        // Load tutor's quizzes
+        result = await quizService.getTutorQuizzes(user.uid, { courseId });
       } else {
-        // Tutor view
-        switch (activeTab) {
-          case 0: // Published
-            filteredQuizzes = filteredQuizzes.filter(quiz => quiz.isPublished);
-            break;
-          case 1: // Draft
-            filteredQuizzes = filteredQuizzes.filter(quiz => !quiz.isPublished);
-            break;
-          case 2: // All
-            // Show all quizzes
-            break;
+        // Load quizzes for students
+        if (courseId) {
+          result = await quizService.getCourseQuizzes(courseId);
+        } else {
+          result = await quizService.getAvailableQuizzes(user.uid);
         }
       }
 
-      setQuizzes(filteredQuizzes);
+      if (result.success) {
+        let filteredQuizzes = result.quizzes || [];
+
+        // Apply tab filters
+        if (userType === USER_TYPES.STUDENT) {
+          switch (activeTab) {
+            case 0: // Available
+              filteredQuizzes = filteredQuizzes.filter(quiz => 
+                quiz.status === 'published' && 
+                (!quiz.attempts || quiz.attempts.length < (quiz.settings?.attemptsAllowed || 1))
+              );
+              break;
+            case 1: // Completed
+              filteredQuizzes = filteredQuizzes.filter(quiz => 
+                quiz.attempts && quiz.attempts.length > 0 && 
+                quiz.attempts.some(attempt => attempt.passed)
+              );
+              break;
+            case 2: // All
+              filteredQuizzes = filteredQuizzes.filter(quiz => 
+                quiz.status === 'published'
+              );
+              break;
+          }
+        } else {
+          // Tutor view
+          switch (activeTab) {
+            case 0: // Published
+              filteredQuizzes = filteredQuizzes.filter(quiz => 
+                quiz.status === 'published'
+              );
+              break;
+            case 1: // Draft
+              filteredQuizzes = filteredQuizzes.filter(quiz => 
+                quiz.status === 'draft'
+              );
+              break;
+            case 2: // All
+              // Show all quizzes
+              break;
+          }
+        }
+
+        setQuizzes(filteredQuizzes);
+      } else {
+        console.error('Failed to load quizzes:', result.error);
+        setQuizzes([]);
+      }
     } catch (error) {
       console.error('Error loading quizzes:', error);
+      setQuizzes([]);
     } finally {
       setLoading(false);
     }
@@ -197,11 +143,23 @@ const QuizList = ({ courseId = null }) => {
 
   const handleDeleteQuiz = async () => {
     if (selectedQuiz) {
-      // Implementation for deleting quiz
-      console.log('Deleting quiz:', selectedQuiz.id);
-      setQuizzes(prev => prev.filter(quiz => quiz.id !== selectedQuiz.id));
-      setDeleteDialog(false);
-      setSelectedQuiz(null);
+      try {
+        const result = await quizService.deleteQuiz(selectedQuiz.id);
+        
+        if (result.success) {
+          setQuizzes(prev => prev.filter(quiz => quiz.id !== selectedQuiz.id));
+          console.log('Quiz deleted successfully');
+        } else {
+          console.error('Failed to delete quiz:', result.error);
+          alert('Failed to delete quiz. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error deleting quiz:', error);
+        alert('Error deleting quiz. Please try again.');
+      } finally {
+        setDeleteDialog(false);
+        setSelectedQuiz(null);
+      }
     }
   };
 

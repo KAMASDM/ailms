@@ -139,10 +139,17 @@ const CourseCard = ({
         height="160"
         image={course.thumbnail || '/api/placeholder/300/160'}
         alt={course.title}
-        sx={{ objectFit: 'cover' }}
+        sx={{ 
+          objectFit: 'cover',
+          backgroundColor: 'grey.100'
+        }}
       />
 
-      <CardContent sx={{ flexGrow: 1, p: 2 }}>
+      <CardContent sx={{ 
+        flexGrow: 1, 
+        p: { xs: 1.5, sm: 2 },
+        '&:last-child': { pb: { xs: 1.5, sm: 2 } }
+      }}>
         {/* Header with bookmark */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -165,14 +172,15 @@ const CourseCard = ({
               variant="h6" 
               component="h3"
               sx={{ 
-                fontWeight: 'bold',
+                fontWeight: 600,
+                fontSize: { xs: '1rem', sm: '1.25rem' },
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: 'vertical',
-                lineHeight: 1.2,
-                mb: 1
+                lineHeight: 1.3,
+                mb: { xs: 0.5, sm: 1 }
               }}
             >
               {course.title}
@@ -227,27 +235,33 @@ const CourseCard = ({
         )}
 
         {/* Course metadata */}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2, color: 'text.secondary' }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          gap: { xs: 1, sm: 2 }, 
+          mb: { xs: 1.5, sm: 2 }, 
+          color: 'text.secondary' 
+        }}>
           {/* Duration */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <TimeIcon sx={{ fontSize: 16, mr: 0.5 }} />
-            <Typography variant="body2">
+            <TimeIcon sx={{ fontSize: { xs: 14, sm: 16 }, mr: 0.5 }} />
+            <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               {formatDuration(course.duration)}
             </Typography>
           </Box>
 
           {/* Students count */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <PersonIcon sx={{ fontSize: 16, mr: 0.5 }} />
-            <Typography variant="body2">
+            <PersonIcon sx={{ fontSize: { xs: 14, sm: 16 }, mr: 0.5 }} />
+            <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               {course.studentsCount || 0} students
             </Typography>
           </Box>
 
           {/* Lessons count */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <SchoolIcon sx={{ fontSize: 16, mr: 0.5 }} />
-            <Typography variant="body2">
+            <SchoolIcon sx={{ fontSize: { xs: 14, sm: 16 }, mr: 0.5 }} />
+            <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               {course.lessonsCount || 0} lessons
             </Typography>
           </Box>
@@ -269,13 +283,13 @@ const CourseCard = ({
         )}
 
         {/* Instructor */}
-        {course.instructor && (
+        {course.instructor && course.instructor.name && (
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <Avatar 
               src={course.instructor.avatar} 
               sx={{ width: 24, height: 24, mr: 1 }}
             >
-              {course.instructor.name?.charAt(0)}
+              {course.instructor.name.charAt(0).toUpperCase()}
             </Avatar>
             <Typography variant="body2" color="text.secondary">
               {course.instructor.name}
@@ -285,31 +299,50 @@ const CourseCard = ({
       </CardContent>
 
       {/* Actions */}
-      <CardActions sx={{ p: 2, pt: 0 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+      <CardActions sx={{ p: { xs: 1.5, sm: 2 }, pt: 0 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          width: '100%', 
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1
+        }}>
           {getActionButton()}
           
-          {course.price > 0 && !isEnrolled && variant !== 'created' && (
-            <Typography variant="h6" fontWeight="bold" color="primary">
-              ${course.price}
-            </Typography>
-          )}
-          
-          {course.originalPrice && course.originalPrice > course.price && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            {course.price > 0 && !isEnrolled && variant !== 'created' && (
               <Typography 
-                variant="body2" 
-                sx={{ textDecoration: 'line-through', color: 'text.secondary' }}
+                variant="h6" 
+                fontWeight="bold" 
+                color="primary"
+                sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
               >
-                ${course.originalPrice}
+                ${course.price}
               </Typography>
-              <Chip 
-                label={`${Math.round((1 - course.price / course.originalPrice) * 100)}% OFF`}
-                size="small"
-                color="error"
-              />
-            </Box>
-          )}
+            )}
+            
+            {course.originalPrice && course.originalPrice > course.price && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    textDecoration: 'line-through', 
+                    color: 'text.secondary',
+                    fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                  }}
+                >
+                  ${course.originalPrice}
+                </Typography>
+                <Chip 
+                  label={`${Math.round((1 - course.price / course.originalPrice) * 100)}% OFF`}
+                  size="small"
+                  color="error"
+                  sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}
+                />
+              </Box>
+            )}
+          </Box>
         </Box>
       </CardActions>
     </Card>

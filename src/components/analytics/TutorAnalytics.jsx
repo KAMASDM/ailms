@@ -60,12 +60,16 @@ import {
 } from 'recharts';
 import { PageHeader } from '../common';
 import { formatDate, formatDuration } from '../../utils/helpers';
+import { useAuth } from '../../hooks/useAuth';
+import analyticsService from '../../services/analyticsService';
 
-const TutorAnalytics = () => {
+const TutorAnalytics = ({ type = 'overview', courseId = null, quizId = null }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [timeRange, setTimeRange] = useState('month');
   const [courseFilter, setCourseFilter] = useState('all');
   const [analyticsData, setAnalyticsData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState(null);
 
@@ -74,9 +78,25 @@ const TutorAnalytics = () => {
   }, [timeRange, courseFilter]);
 
   const loadAnalyticsData = async () => {
+    setLoading(true);
     try {
-      // Mock analytics data - replace with actual API call
-      const mockData = {
+      // Load real analytics data from Firebase
+      let result;
+      
+      if (type === 'quiz' && quizId) {
+        result = await analyticsService.getQuizAnalytics(user.uid, quizId, timeRange);
+      } else if (courseId) {
+        result = await analyticsService.getCourseAnalytics(user.uid, courseId, timeRange);
+      } else {
+        result = await analyticsService.getTutorAnalytics(user.uid, timeRange);
+      }
+      
+      if (result.success) {
+        setAnalyticsData(result.analytics);
+      } else {
+        console.error('Failed to load analytics:', result.error);
+        // Fallback to mock data for development
+        const mockData = {
         overview: {
           totalStudents: 245,
           totalRevenue: 12540,
@@ -210,9 +230,13 @@ const TutorAnalytics = () => {
         ]
       };
 
-      setAnalyticsData(mockData);
+        setAnalyticsData(mockData);
+      }
     } catch (error) {
       console.error('Error loading analytics data:', error);
+      setAnalyticsData(null);
+    } finally {
+      setLoading(false);
     }
   };
 

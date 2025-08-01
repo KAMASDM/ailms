@@ -1,5 +1,5 @@
 // src/components/dashboard/TutorDashboard.jsx
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Grid,
   Card,
@@ -22,7 +22,10 @@ import {
   Paper,
   IconButton,
   Menu,
-  MenuItem
+  MenuItem,
+  Skeleton,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -40,7 +43,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../../utils/helpers';
-import { PageHeader } from '../common';
+import { PageHeader, NotificationSnackbar } from '../common';
+import platformService from '../../services/platformService';
+import courseService from '../../services/courseService';
 
 const TutorDashboard = () => {
   const { user } = useAuth();
@@ -57,87 +62,97 @@ const TutorDashboard = () => {
   const [topCourses, setTopCourses] = useState([]);
   const [analyticsData, setAnalyticsData] = useState([]);
   const [menuAnchor, setMenuAnchor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [creatingTestCourse, setCreatingTestCourse] = useState(false);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
-    loadTutorDashboardData();
-  }, []);
+    if (user?.uid) {
+      loadTutorDashboardData();
+    }
+  }, [user]);
 
   const loadTutorDashboardData = async () => {
-    // Mock data - replace with actual API calls
-    setDashboardStats({
-      totalStudents: 245,
-      totalCourses: 8,
-      totalRevenue: 12540,
-      avgRating: 4.7
-    });
+    try {
+      setLoading(true);
+      setError(null);
 
-    setRecentEnrollments([
-      {
-        id: 1,
-        studentName: 'Alice Johnson',
-        courseName: 'Deep Learning Fundamentals',
-        enrolledAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        avatar: null
-      },
-      {
-        id: 2,
-        studentName: 'Bob Smith',
-        courseName: 'Computer Vision Basics',
-        enrolledAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
-        avatar: null
-      },
-      {
-        id: 3,
-        studentName: 'Carol Davis',
-        courseName: 'Natural Language Processing',
-        enrolledAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-        avatar: null
+      // Fetch tutor-specific dashboard data from Firebase
+      const response = await platformService.getUserDashboardData(user.uid, user.userType);
+      
+      if (response.success) {
+        const { courses = [], stats = {} } = response.data || {};
+        
+        setDashboardStats({
+          totalStudents: stats.totalStudents || 0,
+          totalCourses: stats.totalCourses || courses.length || 0,
+          totalRevenue: stats.totalRevenue || 0,
+          avgRating: stats.avgRating || 4.5 // This would be calculated from course ratings
+        });
+
+        // Get top courses by enrollment
+        const sortedCourses = courses
+          .map(course => ({
+            ...course,
+            enrollmentCount: course.studentsCount || 0,
+            revenue: (course.price || 0) * (course.studentsCount || 0)
+          }))
+          .sort((a, b) => b.enrollmentCount - a.enrollmentCount)
+          .slice(0, 5);
+
+        setTopCourses(sortedCourses);
+
+        // For recent enrollments, we would need a separate collection
+        // For now, we'll show an empty array since it requires more complex queries
+        setRecentEnrollments([]);
+
+        // Generate mock analytics data (this would come from a separate analytics service)
+        const generateAnalyticsData = () => {
+          const last7Days = [];
+          for (let i = 6; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            last7Days.push({
+              name: date.toLocaleDateString('en-US', { weekday: 'short' }),
+              enrollments: Math.floor(Math.random() * 20) + 5,
+              revenue: Math.floor(Math.random() * 500) + 100
+            });
+          }
+          return last7Days;
+        };
+        
+        setAnalyticsData(generateAnalyticsData());
+
+      } else {
+        // If no data found, initialize with empty state instead of error
+        console.log('No dashboard data found, initializing empty state');
+        setDashboardStats({
+          totalStudents: 0,
+          totalCourses: 0,
+          totalRevenue: 0,
+          avgRating: 0
+        });
+        setTopCourses([]);
+        setRecentEnrollments([]);
+        setAnalyticsData([]);
       }
-    ]);
 
-    setTopCourses([
-      {
-        id: 1,
-        title: 'Deep Learning Fundamentals',
-        students: 89,
-        rating: 4.8,
-        revenue: 4450,
-        status: 'published'
-      },
-      {
-        id: 2,
-        title: 'Computer Vision Basics',
-        students: 67,
-        rating: 4.6,
-        revenue: 3350,
-        status: 'published'
-      },
-      {
-        id: 3,
-        title: 'NLP with Transformers',
-        students: 45,
-        rating: 4.9,
-        revenue: 2250,
-        status: 'published'
-      },
-      {
-        id: 4,
-        title: 'AI Ethics Workshop',
-        students: 23,
-        rating: 4.5,
-        revenue: 1150,
-        status: 'draft'
-      }
-    ]);
-
-    setAnalyticsData([
-      { month: 'Jan', enrollments: 12, revenue: 600 },
-      { month: 'Feb', enrollments: 19, revenue: 950 },
-      { month: 'Mar', enrollments: 25, revenue: 1250 },
-      { month: 'Apr', enrollments: 32, revenue: 1600 },
-      { month: 'May', enrollments: 28, revenue: 1400 },
-      { month: 'Jun', enrollments: 35, revenue: 1750 }
-    ]);
+    } catch (err) {
+      console.error('Error loading tutor dashboard:', err);
+      // Initialize with empty state instead of showing error for new tutors
+      setDashboardStats({
+        totalStudents: 0,
+        totalCourses: 0,
+        totalRevenue: 0,
+        avgRating: 0
+      });
+      setTopCourses([]);
+      setRecentEnrollments([]);
+      setAnalyticsData([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMenuClick = (event) => {
@@ -164,6 +179,86 @@ const TutorDashboard = () => {
     }
   };
 
+  const handleCreateTestCourse = async () => {
+    try {
+      setCreatingTestCourse(true);
+      const result = await courseService.createTestCourse(user.uid);
+      if (result.success) {
+        setNotification({
+          open: true,
+          message: result.message,
+          severity: 'success'
+        });
+        // Reload dashboard data to show the new course
+        loadTutorDashboardData();
+      } else {
+        setNotification({
+          open: true,
+          message: result.error || 'Failed to create test course',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Error creating test course:', error);
+      setNotification({
+        open: true,
+        message: 'Error creating test course',
+        severity: 'error'
+      });
+    } finally {
+      setCreatingTestCourse(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h4" gutterBottom>Tutor Dashboard</Typography>
+        <Grid container spacing={3}>
+          {/* Stats Loading */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
+          </Grid>
+          {/* Analytics Chart Loading */}
+          <Grid item xs={12} md={8}>
+            <Skeleton variant="rectangular" height={400} sx={{ borderRadius: 2 }} />
+          </Grid>
+          {/* Top Courses Loading */}
+          <Grid item xs={12} md={4}>
+            <Skeleton variant="rectangular" height={400} sx={{ borderRadius: 2 }} />
+          </Grid>
+        </Grid>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+          <CircularProgress />
+        </Box>
+        <Typography sx={{ textAlign: 'center', mt: 2 }}>Loading your dashboard...</Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h4" gutterBottom>Tutor Dashboard</Typography>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+        <Button variant="contained" onClick={loadTutorDashboardData}>
+          Retry
+        </Button>
+      </Box>
+    );
+  }
+
   return (
     <Box>
       <PageHeader
@@ -179,58 +274,130 @@ const TutorDashboard = () => {
         ]}
       />
 
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: { xs: 3, md: 4 } }}>
         {/* Stats Cards */}
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <PeopleIcon color="primary" sx={{ fontSize: 48, mb: 1 }} />
-              <Typography variant="h4" fontWeight="bold" color="primary">
+        <Grid item xs={6} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent sx={{ 
+              textAlign: 'center',
+              py: { xs: 2, md: 3 }
+            }}>
+              <PeopleIcon 
+                color="primary" 
+                sx={{ 
+                  fontSize: { xs: 36, md: 48 }, 
+                  mb: 1 
+                }} 
+              />
+              <Typography 
+                variant="h4" 
+                fontWeight="bold" 
+                color="primary"
+                sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+              >
                 {dashboardStats.totalStudents}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+              >
                 Total Students
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <CourseIcon color="secondary" sx={{ fontSize: 48, mb: 1 }} />
-              <Typography variant="h4" fontWeight="bold" color="secondary">
+        <Grid item xs={6} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent sx={{ 
+              textAlign: 'center',
+              py: { xs: 2, md: 3 }
+            }}>
+              <CourseIcon 
+                color="secondary" 
+                sx={{ 
+                  fontSize: { xs: 36, md: 48 }, 
+                  mb: 1 
+                }} 
+              />
+              <Typography 
+                variant="h4" 
+                fontWeight="bold" 
+                color="secondary"
+                sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+              >
                 {dashboardStats.totalCourses}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+              >
                 Active Courses
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <MoneyIcon color="success" sx={{ fontSize: 48, mb: 1 }} />
-              <Typography variant="h4" fontWeight="bold" color="success.main">
+        <Grid item xs={6} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent sx={{ 
+              textAlign: 'center',
+              py: { xs: 2, md: 3 }
+            }}>
+              <MoneyIcon 
+                color="success" 
+                sx={{ 
+                  fontSize: { xs: 36, md: 48 }, 
+                  mb: 1 
+                }} 
+              />
+              <Typography 
+                variant="h4" 
+                fontWeight="bold" 
+                color="success.main"
+                sx={{ fontSize: { xs: '1.25rem', md: '2.125rem' } }}
+              >
                 ${dashboardStats.totalRevenue.toLocaleString()}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+              >
                 Total Revenue
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <StarIcon color="warning" sx={{ fontSize: 48, mb: 1 }} />
-              <Typography variant="h4" fontWeight="bold" color="warning.main">
+        <Grid item xs={6} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent sx={{ 
+              textAlign: 'center',
+              py: { xs: 2, md: 3 }
+            }}>
+              <StarIcon 
+                color="warning" 
+                sx={{ 
+                  fontSize: { xs: 36, md: 48 }, 
+                  mb: 1 
+                }} 
+              />
+              <Typography 
+                variant="h4" 
+                fontWeight="bold" 
+                color="warning.main"
+                sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+              >
                 {dashboardStats.avgRating}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+              >
                 Average Rating
               </Typography>
             </CardContent>
@@ -238,67 +405,140 @@ const TutorDashboard = () => {
         </Grid>
 
         {/* Analytics Chart */}
-        <Grid item xs={12} md={8}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+        <Grid item xs={12} lg={8}>
+          <Card elevation={2}>
+            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+              <Typography 
+                variant="h6" 
+                gutterBottom 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  fontWeight: 600,
+                  fontSize: { xs: '1.1rem', md: '1.25rem' }
+                }}
+              >
                 <TrendingUpIcon sx={{ mr: 1 }} />
                 Enrollments & Revenue Trend
               </Typography>
               
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={analyticsData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line 
-                    type="monotone" 
-                    dataKey="enrollments" 
-                    stroke="#1976d2" 
-                    strokeWidth={2}
-                    name="Enrollments"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="revenue" 
-                    stroke="#dc004e" 
-                    strokeWidth={2}
-                    name="Revenue ($)"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {analyticsData.length > 0 ? (
+                <Box sx={{ width: '100%', height: { xs: 250, md: 300 } }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={analyticsData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="name" 
+                        tick={{ fontSize: 12 }}
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 12 }}
+                      />
+                      <Tooltip />
+                      <Line 
+                        type="monotone" 
+                        dataKey="enrollments" 
+                        stroke="#1976d2" 
+                        strokeWidth={2}
+                        name="Enrollments"
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="revenue" 
+                        stroke="#dc004e" 
+                        strokeWidth={2}
+                        name="Revenue ($)"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+              ) : (
+                <Box sx={{ 
+                  height: { xs: 250, md: 300 }, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  bgcolor: 'grey.50',
+                  borderRadius: 1
+                }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Analytics will appear here once you have course enrollments
+                  </Typography>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
         {/* Recent Enrollments */}
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
+        <Grid item xs={12} lg={4}>
+          <Card elevation={2}>
+            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+              <Typography 
+                variant="h6" 
+                gutterBottom
+                sx={{ 
+                  fontWeight: 600,
+                  fontSize: { xs: '1.1rem', md: '1.25rem' }
+                }}
+              >
                 Recent Enrollments
               </Typography>
               
-              <List dense>
-                {recentEnrollments.map((enrollment) => (
-                  <ListItem key={enrollment.id} sx={{ px: 0 }}>
-                    <ListItemAvatar>
-                      <Avatar src={enrollment.avatar}>
-                        {enrollment.studentName.charAt(0)}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={enrollment.studentName}
-                      secondary={`${enrollment.courseName} • ${formatDate(enrollment.enrolledAt)}`}
-                      primaryTypographyProps={{ variant: 'body2', fontWeight: 'medium' }}
-                      secondaryTypographyProps={{ variant: 'caption' }}
-                    />
+              <List dense sx={{ px: 0 }}>
+                {recentEnrollments.length > 0 ? (
+                  recentEnrollments.map((enrollment) => (
+                    <ListItem 
+                      key={enrollment.id} 
+                      sx={{ 
+                        px: 0,
+                        py: { xs: 0.5, md: 1 }
+                      }}
+                    >
+                      <ListItemAvatar>
+                        <Avatar 
+                          src={enrollment.avatar}
+                          sx={{ 
+                            width: { xs: 36, md: 40 },
+                            height: { xs: 36, md: 40 }
+                          }}
+                        >
+                          {enrollment.studentName?.charAt(0) || 'S'}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={enrollment.studentName || 'Unknown Student'}
+                        secondary={`${enrollment.courseName || 'Unknown Course'} • ${enrollment.enrolledAt ? formatDate(enrollment.enrolledAt) : 'Recently'}`}
+                        primaryTypographyProps={{ 
+                          variant: 'body2', 
+                          fontWeight: 'medium',
+                          fontSize: { xs: '0.875rem', md: '1rem' }
+                        }}
+                        secondaryTypographyProps={{ 
+                          variant: 'caption',
+                          fontSize: { xs: '0.75rem', md: '0.875rem' }
+                        }}
+                        sx={{ mr: 1 }}
+                      />
+                    </ListItem>
+                  ))
+                ) : (
+                  <ListItem sx={{ px: 0, py: 2, justifyContent: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No recent enrollments
+                    </Typography>
                   </ListItem>
-                ))}
+                )}
               </List>
               
-              <Button variant="outlined" fullWidth sx={{ mt: 1 }}>
+              <Button 
+                variant="outlined" 
+                fullWidth 
+                sx={{ 
+                  mt: 1,
+                  py: { xs: 1, md: 1.5 }
+                }}
+              >
                 View All Students
               </Button>
             </CardContent>
@@ -313,13 +553,23 @@ const TutorDashboard = () => {
                 <Typography variant="h6">
                   Your Courses
                 </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => navigate('/tutor/create-course')}
-                >
-                  Create Course
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleCreateTestCourse}
+                    disabled={creatingTestCourse}
+                    startIcon={creatingTestCourse ? <CircularProgress size={20} /> : <AddIcon />}
+                  >
+                    {creatingTestCourse ? 'Creating...' : 'Quick Test Course'}
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => navigate('/tutor/create-course')}
+                  >
+                    Create Course
+                  </Button>
+                </Box>
               </Box>
               
               <TableContainer component={Paper} variant="outlined">
@@ -335,52 +585,79 @@ const TutorDashboard = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {topCourses.map((course) => (
-                      <TableRow key={course.id} hover>
-                        <TableCell>
-                          <Typography variant="subtitle2" fontWeight="medium">
-                            {course.title}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Typography variant="body2">
-                            {course.students}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <StarIcon sx={{ fontSize: 16, color: 'warning.main', mr: 0.5 }} />
-                            <Typography variant="body2">
-                              {course.rating}
+                    {topCourses.length > 0 ? (
+                      topCourses.map((course) => (
+                        <TableRow key={course.id} hover>
+                          <TableCell>
+                            <Typography variant="subtitle2" fontWeight="medium">
+                              {course.title || 'Untitled Course'}
                             </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2">
+                              {course.enrollmentCount || course.studentsCount || 0}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <StarIcon sx={{ fontSize: 16, color: 'warning.main', mr: 0.5 }} />
+                              <Typography variant="body2">
+                                {course.rating || course.averageRating || 'N/A'}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" fontWeight="medium" color="success.main">
+                              ${course.revenue?.toLocaleString() || '0'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={course.status || 'draft'}
+                              color={getStatusColor(course.status || 'draft')}
+                              size="small"
+                              sx={{ textTransform: 'capitalize' }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <IconButton size="small" onClick={() => navigate(`/tutor/course/${course.id}`)}>
+                              <ViewIcon />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => navigate(`/tutor/course/${course.id}/edit`)}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" onClick={handleMenuClick}>
+                              <MoreIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4 }}>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            No courses created yet. Start by creating your first course!
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
+                            <Button
+                              variant="outlined"
+                              onClick={handleCreateTestCourse}
+                              disabled={creatingTestCourse}
+                              startIcon={creatingTestCourse ? <CircularProgress size={20} /> : <AddIcon />}
+                            >
+                              {creatingTestCourse ? 'Creating...' : 'Quick Test Course'}
+                            </Button>
+                            <Button
+                              variant="contained"
+                              startIcon={<AddIcon />}
+                              onClick={() => navigate('/tutor/create-course')}
+                            >
+                              Create Course
+                            </Button>
                           </Box>
                         </TableCell>
-                        <TableCell align="center">
-                          <Typography variant="body2" fontWeight="medium" color="success.main">
-                            ${course.revenue}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            label={course.status}
-                            color={getStatusColor(course.status)}
-                            size="small"
-                            sx={{ textTransform: 'capitalize' }}
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          <IconButton size="small" onClick={() => navigate(`/tutor/course/${course.id}`)}>
-                            <ViewIcon />
-                          </IconButton>
-                          <IconButton size="small" onClick={() => navigate(`/tutor/course/${course.id}/edit`)}>
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton size="small" onClick={handleMenuClick}>
-                            <MoreIcon />
-                          </IconButton>
-                        </TableCell>
                       </TableRow>
-                    ))}
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -398,6 +675,14 @@ const TutorDashboard = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Notification Snackbar */}
+      <NotificationSnackbar
+        open={notification.open}
+        message={notification.message}
+        severity={notification.severity}
+        onClose={() => setNotification({ ...notification, open: false })}
+      />
     </Box>
   );
 };

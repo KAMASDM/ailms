@@ -17,6 +17,7 @@ export const formatTime = (date) => {
 };
 
 export const formatDuration = (minutes) => {
+  if (!minutes || minutes < 0) return '0 min';
   if (minutes < 60) {
     return `${minutes} min`;
   }
@@ -42,6 +43,7 @@ export const slugify = (text) => {
 };
 
 export const truncateText = (text, maxLength) => {
+  if (!text || typeof text !== 'string') return '';
   if (text.length <= maxLength) return text;
   return text.substr(0, maxLength) + '...';
 };
@@ -59,10 +61,12 @@ export const debounce = (func, wait) => {
 };
 
 export const capitalizeFirst = (str) => {
+  if (!str || typeof str !== 'string') return '';
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
 export const getInitials = (name) => {
+  if (!name || typeof name !== 'string') return '';
   return name
     .split(' ')
     .map(word => word.charAt(0))

@@ -1,5 +1,5 @@
 // src/components/common/Sidebar.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -12,6 +12,7 @@ import {
   Divider,
   Collapse,
   IconButton,
+  Typography,
   useTheme,
   useMediaQuery
 } from '@mui/material';
@@ -40,14 +41,27 @@ import { USER_TYPES } from '../../utils/constants';
 
 const DRAWER_WIDTH = 280;
 
-const Sidebar = () => {
-  const [open, setOpen] = useState(true);
+const Sidebar = ({ onStateChange }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [open, setOpen] = useState(!isMobile); // Set initial state based on screen size
   const [expandedItems, setExpandedItems] = useState({});
   const { userType } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Set initial open state based on screen size
+  useEffect(() => {
+    const shouldOpen = !isMobile;
+    setOpen(shouldOpen);
+  }, [isMobile]);
+
+  // Notify parent of state changes immediately and on changes
+  useEffect(() => {
+    if (onStateChange) {
+      onStateChange({ open: open && !isMobile, isMobile });
+    }
+  }, [open, isMobile, onStateChange]);
 
   // Student navigation items
   const studentNavItems = [
@@ -215,7 +229,7 @@ const Sidebar = () => {
 
     return (
       <Box key={item.id}>
-        <ListItem disablePadding>
+        <ListItem disablePadding sx={{ mb: 0.5 }}>
           <ListItemButton
             onClick={() => {
               if (hasChildren) {
@@ -225,34 +239,71 @@ const Sidebar = () => {
               }
             }}
             sx={{
-              backgroundColor: active ? 'primary.light' : 'transparent',
-              color: active ? 'primary.contrastText' : 'inherit',
+              py: 1.5,
+              px: 2,
+              borderRadius: 2,
+              mx: 1,
+              backgroundColor: active ? 'primary.main' : 'transparent',
+              color: active ? 'primary.contrastText' : 'text.primary',
+              transition: 'all 0.2s ease',
               '&:hover': {
-                backgroundColor: active ? 'primary.main' : 'action.hover'
+                backgroundColor: active ? 'primary.dark' : 'action.hover',
+                transform: 'translateX(4px)'
               }
             }}
           >
-            <ListItemIcon sx={{ color: active ? 'primary.contrastText' : 'inherit' }}>
+            <ListItemIcon 
+              sx={{ 
+                color: active ? 'primary.contrastText' : 'text.secondary',
+                minWidth: 40
+              }}
+            >
               {item.icon}
             </ListItemIcon>
-            <ListItemText primary={item.label} />
+            <ListItemText 
+              primary={item.label}
+              primaryTypographyProps={{
+                fontWeight: active ? 600 : 500,
+                fontSize: '0.95rem'
+              }}
+            />
             {hasChildren && (
-              isExpanded ? <ExpandLess /> : <ExpandMore />
+              <Box sx={{ color: active ? 'primary.contrastText' : 'text.secondary' }}>
+                {isExpanded ? <ExpandLess /> : <ExpandMore />}
+              </Box>
             )}
           </ListItemButton>
         </ListItem>
 
         {hasChildren && (
           <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding>
+            <List component="div" disablePadding sx={{ ml: 1 }}>
               {item.children.map((child) => (
-                <ListItem key={child.path} disablePadding>
+                <ListItem key={child.path} disablePadding sx={{ mb: 0.25 }}>
                   <ListItemButton
-                    sx={{ pl: 4 }}
+                    sx={{ 
+                      pl: 5,
+                      pr: 2,
+                      py: 1,
+                      borderRadius: 2,
+                      mx: 1,
+                      backgroundColor: isActive(child.path) ? 'primary.light' : 'transparent',
+                      color: isActive(child.path) ? 'primary.main' : 'text.secondary',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        backgroundColor: isActive(child.path) ? 'primary.light' : 'action.hover',
+                        color: 'primary.main'
+                      }
+                    }}
                     onClick={() => handleNavigation(child.path)}
-                    selected={isActive(child.path)}
                   >
-                    <ListItemText primary={child.label} />
+                    <ListItemText 
+                      primary={child.label}
+                      primaryTypographyProps={{
+                        fontWeight: isActive(child.path) ? 600 : 400,
+                        fontSize: '0.875rem'
+                      }}
+                    />
                   </ListItemButton>
                 </ListItem>
               ))}
@@ -264,36 +315,67 @@ const Sidebar = () => {
   };
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ 
+      height: '100%', 
+      display: 'flex', 
+      flexDirection: 'column',
+      bgcolor: 'background.paper'
+    }}>
       {/* Drawer Header */}
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-end',
-          p: 1,
-          minHeight: 64
+          justifyContent: 'space-between',
+          p: 2,
+          minHeight: 64,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
         }}
       >
-        <IconButton onClick={() => setOpen(false)}>
-          <ChevronLeftIcon />
-        </IconButton>
+        <Typography variant="h6" fontWeight={600} color="primary">
+          Navigation
+        </Typography>
+        {!isMobile && (
+          <IconButton 
+            onClick={() => setOpen(false)}
+            size="small"
+            sx={{ 
+              bgcolor: 'action.hover',
+              '&:hover': { bgcolor: 'action.selected' }
+            }}
+          >
+            <ChevronLeftIcon />
+          </IconButton>
+        )}
       </Box>
-      
-      <Divider />
 
       {/* Navigation */}
-      <List sx={{ flexGrow: 1, py: 0 }}>
+      <List sx={{ 
+        flexGrow: 1, 
+        py: 2,
+        px: 0,
+        '&::-webkit-scrollbar': {
+          width: '6px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'transparent',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: theme.palette.divider,
+          borderRadius: '3px',
+        },
+        '&::-webkit-scrollbar-thumb:hover': {
+          background: theme.palette.action.hover,
+        },
+      }}>
         {navItems.map((item) => renderNavItem(item))}
       </List>
     </Box>
   );
 
   return (
-    <Box
-      component="nav"
-      sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}
-    >
+    <>
       {/* Mobile drawer */}
       {isMobile ? (
         <Drawer
@@ -304,7 +386,9 @@ const Sidebar = () => {
           sx={{
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
-              width: DRAWER_WIDTH
+              width: DRAWER_WIDTH,
+              mt: '64px', // Account for header height
+              height: 'calc(100vh - 64px)'
             }
           }}
         >
@@ -313,15 +397,29 @@ const Sidebar = () => {
       ) : (
         /* Desktop drawer */
         <Drawer
-          variant="persistent"
-          open={open}
+          variant="permanent"
+          open={true}
           sx={{
+            width: open ? DRAWER_WIDTH : 0,
+            flexShrink: 0,
+            transition: theme.transitions.create('width', {
+              easing: theme.transitions.easing.easeInOut,
+              duration: theme.transitions.duration.standard,
+            }),
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: DRAWER_WIDTH,
-              position: 'relative',
+              position: 'fixed',
               height: 'calc(100vh - 64px)',
-              top: 64
+              top: 64,
+              left: open ? 0 : -DRAWER_WIDTH,
+              borderRight: `1px solid ${theme.palette.divider}`,
+              zIndex: theme.zIndex.drawer,
+              transition: theme.transitions.create('left', {
+                easing: theme.transitions.easing.easeInOut,
+                duration: theme.transitions.duration.standard,
+              }),
+              overflowX: 'hidden',
             }
           }}
         >
@@ -332,16 +430,26 @@ const Sidebar = () => {
       {/* Mobile menu button */}
       {isMobile && !open && (
         <IconButton
-          color="inherit"
+          color="primary"
           aria-label="open drawer"
           edge="start"
           onClick={() => setOpen(true)}
-          sx={{ position: 'fixed', top: 70, left: 8, zIndex: 1300 }}
+          sx={{ 
+            position: 'fixed', 
+            top: 70, 
+            left: 8, 
+            zIndex: 1300,
+            bgcolor: 'background.paper',
+            boxShadow: 2,
+            '&:hover': {
+              bgcolor: 'background.paper',
+            }
+          }}
         >
           <MenuIcon />
         </IconButton>
       )}
-    </Box>
+    </>
   );
 };
 

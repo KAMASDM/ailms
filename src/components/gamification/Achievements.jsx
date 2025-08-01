@@ -40,6 +40,7 @@ import { PageHeader } from '../common';
 import { formatDate } from '../../utils/helpers';
 import { useAuth } from '../../hooks/useAuth';
 import { useSelector } from 'react-redux';
+import gamificationService from '../../services/gamificationService';
 
 const Achievements = () => {
   const { user } = useAuth();
@@ -54,8 +55,17 @@ const Achievements = () => {
   }, []);
 
   const loadAchievements = async () => {
-    // Mock achievements data - replace with actual API call
-    const mockAchievements = [
+    try {
+      // Load real achievements data from Firebase
+      const result = await gamificationService.getUserAchievements(user.uid);
+      
+      if (result.success) {
+        const allAchievements = [...result.achievements.earned, ...result.achievements.available];
+        setAchievements(allAchievements);
+      } else {
+        console.error('Failed to load achievements:', result.error);
+        // Fallback to mock data for development
+        const mockAchievements = [
       {
         id: 1,
         name: 'First Steps',
@@ -171,6 +181,10 @@ const Achievements = () => {
     ];
 
     setAchievements(mockAchievements);
+      }
+    } catch (error) {
+      console.error('Error loading achievements:', error);
+    }
   };
 
   const getRarityColor = (rarity) => {

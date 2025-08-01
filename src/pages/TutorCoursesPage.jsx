@@ -1,42 +1,51 @@
 // src/pages/TutorCoursesPage.jsx
-import { CourseList } from '../components/courses';
-import { Button } from '@mui/material';
+import React from 'react';
+import LiveCourseList from '../components/courses/LiveCourseList';
+import { Button, Box, Typography } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 const TutorCoursesPage = () => {
   const navigate = useNavigate();
-
-  // Mock tutor courses
-  const courses = [
-    {
-      id: 1,
-      title: 'My Deep Learning Course',
-      description: 'A comprehensive course on deep learning',
-      thumbnail: '/api/placeholder/300/200',
-      price: 99,
-      studentsCount: 45,
-      rating: 4.8,
-      reviewsCount: 12,
-      status: 'published'
-    }
-  ];
+  const { user } = useAuth();
 
   return (
-    <CourseList 
-      courses={courses}
-      title="My Courses"
-      variant="created"
-      showFilters={false}
-      actions={[
-        {
-          label: 'Create New Course',
-          icon: <AddIcon />,
-          onClick: () => navigate('/tutor/create-course'),
-          variant: 'contained'
-        }
-      ]}
-    />
+    <Box>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 4,
+        flexWrap: 'wrap',
+        gap: 2
+      }}>
+        <Box>
+          <Typography variant="h4" component="h1" gutterBottom>
+            My Courses
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Manage and track your courses with real-time updates
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => navigate('/tutor/create-course')}
+          sx={{ whiteSpace: 'nowrap' }}
+        >
+          Create New Course
+        </Button>
+      </Box>
+      
+      <LiveCourseList
+        tutorId={user?.uid}
+        title="Your Courses"
+        variant="created"
+        showFilters={true}
+        showSearch={true}
+      />
+    </Box>
   );
 };
 
