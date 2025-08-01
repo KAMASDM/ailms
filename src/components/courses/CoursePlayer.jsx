@@ -47,6 +47,9 @@ import {
 } from '@mui/icons-material';
 import { PageHeader } from '../common';
 import { formatDuration } from '../../utils/helpers';
+import { useAuth } from '../../hooks/useAuth';
+import courseService from '../../services/courseService';
+import userService from '../../services/userService';
 
 const DRAWER_WIDTH = 360;
 
@@ -55,6 +58,7 @@ const CoursePlayer = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { user } = useAuth();
 
   const [course, setCourse] = useState(null);
   const [currentLesson, setCurrentLesson] = useState(null);
@@ -69,9 +73,50 @@ const CoursePlayer = () => {
     loadCourse();
   }, [id]);
 
+  // Helper function to find lesson by ID
+  const findLessonById = (course, lessonId) => {
+    for (const module of course.curriculum || []) {
+      for (const lesson of module.lessons || []) {
+        if (lesson.id === lessonId) {
+          return lesson;
+        }
+      }
+    }
+    return null;
+  };
+
   const loadCourse = async () => {
-    // Mock data - replace with actual API call
-    const mockCourse = {
+    try {
+      // Load course data and progress from Firebase
+      const courseResult = await courseService.getCourse(id);
+      
+      if (courseResult.success) {
+        setCourse(courseResult.course);
+        
+        // Load user progress
+        if (user) {
+          const progressResult = await courseService.getUserProgress(user.uid, id);
+          if (progressResult.success) {
+            setCompletedLessons(new Set(progressResult.progress.completedLessons || []));
+            setBookmarkedLessons(new Set(progressResult.progress.bookmarkedLessons || []));
+            setNotes(progressResult.progress.notes || '');
+            
+            // Set current lesson from progress or first lesson
+            const currentLessonId = progressResult.progress.currentLessonId;
+            if (currentLessonId) {
+              const lesson = findLessonById(courseResult.course, currentLessonId);
+              if (lesson) {
+                setCurrentLesson(lesson);
+              }
+            } else if (courseResult.course.curriculum[0]?.lessons[0]) {
+              setCurrentLesson(courseResult.course.curriculum[0].lessons[0]);
+            }
+          }
+        }
+      } else {
+        console.error('Failed to load course:', courseResult.error);
+        // Fallback to mock data for development
+        const mockCourse = {
       id: id,
       title: 'Deep Learning Fundamentals',
       instructor: {
@@ -165,8 +210,12 @@ const CoursePlayer = () => {
       setCurrentLesson(mockCourse.curriculum[0].lessons[0]);
     }
 
-    // Mock completed lessons
-    setCompletedLessons(new Set([1, 2]));
+        // Mock completed lessons
+        setCompletedLessons(new Set([1, 2]));
+      }
+    } catch (error) {
+      console.error('Error loading course:', error);
+    }
   };
 
   const handleLessonClick = (lesson) => {
@@ -176,9 +225,30 @@ const CoursePlayer = () => {
     }
   };
 
-  const markLessonComplete = () => {
-    if (currentLesson) {
-      setCompletedLessons(prev => new Set([...prev, currentLesson.id]));
+  const markLessonComplete = async () => {
+    if (currentLesson && user) {
+      const newCompletedLessons = new Set([...completedLessons, currentLesson.id]);
+      setCompletedLessons(newCompletedLessons);
+      
+      // Save progress to Firebase
+      try {
+        const progressData = {
+          completedLessons: Array.from(newCompletedLessons),
+          currentLessonId: currentLesson.id,
+          bookmarkedLessons: Array.from(bookmarkedLessons),
+          notes: notes,
+          lastUpdated: new Date()
+        };
+        
+        await courseService.updateUserProgress(user.uid, id, progressData);
+        
+        // Award points for lesson completion
+        // await gamificationService.awardPoints(user.uid, 'LESSON_COMPLETE');
+        
+      } catch (error) {
+        console.error('Error saving progress:', error);
+      }
+      
       // Move to next lesson
       const nextLesson = getNextLesson();
       if (nextLesson) {

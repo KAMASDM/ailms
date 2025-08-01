@@ -37,10 +37,13 @@ import {
 import { PageHeader, ConfirmDialog } from '../common';
 import { formatDuration } from '../../utils/helpers';
 import { QUIZ_TYPES } from '../../utils/constants';
+import { useAuth } from '../../hooks/useAuth';
+import quizService from '../../services/quizService';
 
-const Quiz = () => {
+const Quiz = ({ variant = 'take' }) => { // 'take' or 'preview'
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const [quiz, setQuiz] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -172,69 +175,45 @@ const Quiz = () => {
   };
 
   const handleSubmitQuiz = async () => {
-    setIsSubmitted(true);
-    
-    // Calculate results
-    let totalPoints = 0;
-    let earnedPoints = 0;
-    const questionResults = {};
+    if (variant === 'preview') {
+      // Just close preview mode
+      navigate(-1);
+      return;
+    }
 
-    quiz.questions.forEach(question => {
-      totalPoints += question.points;
-      const userAnswer = answers[question.id];
-      let isCorrect = false;
-
-      switch (question.type) {
-        case QUIZ_TYPES.MULTIPLE_CHOICE:
-          if (question.correctAnswers) {
-            // Multiple correct answers
-            isCorrect = Array.isArray(userAnswer) && 
-              userAnswer.length === question.correctAnswers.length &&
-              userAnswer.every(answer => question.correctAnswers.includes(answer));
-          } else {
-            // Single correct answer
-            isCorrect = userAnswer === question.correctAnswer;
-          }
-          break;
-        case QUIZ_TYPES.TRUE_FALSE:
-          isCorrect = userAnswer === question.correctAnswer;
-          break;
-        case QUIZ_TYPES.SHORT_ANSWER:
-        case QUIZ_TYPES.CODE:
-          // These would need AI evaluation in real implementation
-          isCorrect = true; // Mock as correct for demo
-          break;
-        default:
-          break;
-      }
-
-      if (isCorrect) {
-        earnedPoints += question.points;
-      }
-
-      questionResults[question.id] = {
-        isCorrect,
-        userAnswer,
-        correctAnswer: question.correctAnswer || question.correctAnswers,
-        explanation: question.explanation
+    try {
+      setIsSubmitted(true);
+      
+      // Submit the quiz attempt to Firebase
+      const attemptData = {
+        quizId: quiz.id,
+        studentId: user.uid,
+        answers: answers,
+        timeSpent: (quiz.settings?.timeLimit || 30) * 60 - (timeRemaining || 0),
+        flaggedQuestions: Array.from(flaggedQuestions),
+        submittedAt: new Date()
       };
-    });
 
-    const percentage = (earnedPoints / totalPoints) * 100;
-    const passed = percentage >= quiz.passingScore;
-
-    const resultData = {
-      totalQuestions: quiz.questions.length,
-      totalPoints,
-      earnedPoints,
-      percentage: Math.round(percentage),
-      passed,
-      timeTaken: quiz.duration - timeRemaining,
-      questionResults
-    };
-
-    setResults(resultData);
-    setShowSubmitDialog(false);
+      const result = await quizService.submitQuizAttempt(attemptData);
+      
+      if (result.success) {
+        setResults(result.results);
+        setShowSubmitDialog(false);
+        
+        // Redirect to results page after a delay
+        setTimeout(() => {
+          navigate(`/quiz/${quiz.id}/results`);
+        }, 3000);
+      } else {
+        console.error('Failed to submit quiz:', result.error);
+        alert('Failed to submit quiz. Please try again.');
+        setIsSubmitted(false);
+      }
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      alert('Error submitting quiz. Please try again.');
+      setIsSubmitted(false);
+    }
   };
 
   const formatTime = (seconds) => {

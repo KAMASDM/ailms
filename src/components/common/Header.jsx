@@ -83,9 +83,13 @@ const Header = () => {
           </Typography>
         </Box>
 
-        {/* Navigation Links (for authenticated users) */}
+        {/* Navigation Links (for authenticated users - hidden on mobile) */}
         {user && (
-          <Box sx={{ display: 'flex', ml: 4, gap: 2 }}>
+          <Box sx={{ 
+            display: { xs: 'none', md: 'flex' }, 
+            ml: 4, 
+            gap: 2 
+          }}>
             <Button
               color="inherit"
               component={Link}

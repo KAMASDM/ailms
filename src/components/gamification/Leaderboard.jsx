@@ -35,6 +35,7 @@ import {
 } from '@mui/icons-material';
 import { PageHeader } from '../common';
 import { useAuth } from '../../hooks/useAuth';
+import gamificationService from '../../services/gamificationService';
 
 const Leaderboard = () => {
   const { user } = useAuth();
@@ -52,7 +53,27 @@ const Leaderboard = () => {
   const loadLeaderboard = async () => {
     setLoading(true);
     try {
-      // Mock leaderboard data - replace with actual API call
+      // Load real leaderboard data from Firebase
+      const categoryMap = {
+        0: 'points',
+        1: 'courses', 
+        2: 'streaks'
+      };
+      
+      const leaderboardResult = await gamificationService.getLeaderboard(timeframe, categoryMap[activeTab] || 'points', 50);
+      const userRankResult = await gamificationService.getUserRank(user.uid, categoryMap[activeTab] || 'points');
+      
+      if (leaderboardResult.success) {
+        setLeaderboardData(leaderboardResult.leaderboard);
+      }
+      
+      if (userRankResult.success) {
+        setUserRank(userRankResult.rank);
+      }
+      
+      if (!leaderboardResult.success) {
+        console.error('Failed to load leaderboard:', leaderboardResult.error);
+        // Fallback to mock data for development
       const mockData = {
         points: [
           {
@@ -225,6 +246,7 @@ const Leaderboard = () => {
       // Find current user's rank
       const currentUserEntry = currentData.find(entry => entry.isCurrentUser);
       setUserRank(currentUserEntry);
+      }
 
     } catch (error) {
       console.error('Error loading leaderboard:', error);

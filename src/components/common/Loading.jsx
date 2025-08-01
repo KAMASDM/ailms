@@ -1,12 +1,16 @@
 // src/components/common/Loading.jsx
-import { Box, CircularProgress, Typography, Skeleton } from '@mui/material';
+import { Box, CircularProgress, Typography, Skeleton, LinearProgress } from '@mui/material';
 
 const Loading = ({ 
   type = 'spinner', 
   size = 40, 
   message = 'Loading...', 
   fullScreen = false,
-  lines = 3 
+  lines = 3,
+  variant = 'text', // for skeleton: 'text', 'circular', 'rectangular', 'rounded'
+  height = 60,
+  showProgress = false,
+  progress = 0
 }) => {
   if (type === 'skeleton') {
     return (
@@ -14,11 +18,36 @@ const Loading = ({
         {Array.from({ length: lines }).map((_, index) => (
           <Skeleton
             key={index}
-            variant="rectangular"
-            height={60}
-            sx={{ mb: 1, borderRadius: 1 }}
+            variant={variant}
+            height={height}
+            sx={{ 
+              mb: 1, 
+              borderRadius: variant === 'rounded' ? 2 : 1,
+              '&:last-child': { mb: 0 }
+            }}
           />
         ))}
+      </Box>
+    );
+  }
+
+  if (type === 'linear') {
+    return (
+      <Box sx={{ width: '100%', py: 2 }}>
+        <LinearProgress 
+          variant={showProgress ? 'determinate' : 'indeterminate'} 
+          value={progress}
+          sx={{ mb: 1 }}
+        />
+        {message && (
+          <Typography 
+            variant="body2" 
+            color="text.secondary" 
+            align="center"
+          >
+            {message}
+          </Typography>
+        )}
       </Box>
     );
   }

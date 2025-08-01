@@ -1,5 +1,5 @@
 // src/components/courses/CourseCreator.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Stepper,
@@ -33,7 +33,9 @@ import {
   Paper,
   FormControlLabel,
   Switch,
-  InputAdornment
+  InputAdornment,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -46,9 +48,11 @@ import {
   Assignment as AssignmentIcon,
   Description as TextIcon
 } from '@mui/icons-material';
-import { PageHeader, ConfirmDialog } from '../common';
+import { PageHeader, ConfirmDialog, NotificationSnackbar } from '../common';
 import { COURSE_LEVELS, COURSE_CATEGORIES } from '../../utils/constants';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import courseService from '../../services/courseService';
 
 const steps = [
   'Basic Information',
@@ -59,9 +63,14 @@ const steps = [
 
 const CourseCreator = ({ editMode = false, courseId = null }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
+  const [validationErrors, setValidationErrors] = useState([]);
 
   // Course data state
   const [courseData, setCourseData] = useState({
@@ -86,6 +95,34 @@ const CourseCreator = ({ editMode = false, courseId = null }) => {
     enableCertificate: true,
     enableQuizzes: true
   });
+
+  // Load course data if in edit mode
+  useEffect(() => {
+    if (editMode && courseId) {
+      loadCourseData();
+    }
+  }, [editMode, courseId]);
+
+  const loadCourseData = async () => {
+    try {
+      setLoading(true);
+      const result = await courseService.getCourse(courseId);
+      if (result.success) {
+        setCourseData({
+          ...result.course,
+          whatYouWillLearn: result.course.objectives || [''],
+          targetAudience: result.course.targetAudience || ['']
+        });
+      } else {
+        showNotification('Failed to load course data', 'error');
+      }
+    } catch (error) {
+      console.error('Error loading course:', error);
+      showNotification('Error loading course data', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Dialog states
   const [lessonDialog, setLessonDialog] = useState({ open: false, moduleIndex: null, lessonIndex: null });
@@ -227,15 +264,129 @@ const CourseCreator = ({ editMode = false, courseId = null }) => {
     }));
   };
 
-  const handleSaveDraft = () => {
-    console.log('Saving draft:', courseData);
-    // Implementation for saving draft
+  const showNotification = (message, severity = 'success') => {
+    setNotification({ open: true, message, severity });
   };
 
-  const handlePublishCourse = () => {
-    console.log('Publishing course:', courseData);
-    // Implementation for publishing course
-    navigate('/tutor/manage-courses');
+  const validateCourse = () => {
+    const validation = courseService.validateCourseData({
+      ...courseData,
+      objectives: courseData.whatYouWillLearn.filter(item => item.trim()),
+      curriculum: courseData.curriculum
+    });
+    
+    setValidationErrors(validation.errors);
+    return validation.isValid;
+  };
+
+  const prepareCourseDataForSave = () => {
+    return {
+      title: courseData.title.trim(),
+      subtitle: courseData.subtitle.trim(),
+      description: courseData.description.trim(),
+      category: courseData.category,
+      level: courseData.level,
+      language: courseData.language,
+      price: courseData.isFree ? 0 : parseFloat(courseData.price) || 0,
+      currency: 'USD',
+      tags: courseData.tags.filter(tag => tag.trim()),
+      objectives: courseData.whatYouWillLearn.filter(item => item.trim()),
+      requirements: courseData.requirements.filter(item => item.trim()),
+      targetAudience: courseData.targetAudience.filter(item => item.trim()),
+      modules: courseData.curriculum.map(module => ({
+        title: module.title,
+        description: module.description,
+        duration: module.lessons.reduce((total, lesson) => total + (lesson.duration || 0), 0),
+        lessons: module.lessons.map(lesson => ({
+          title: lesson.title,
+          type: lesson.type,
+          duration: lesson.duration || 0,
+          content: lesson.content || '',
+          videoUrl: lesson.videoUrl || '',
+          resources: lesson.resources || []
+        }))
+      })),
+      thumbnail: courseData.thumbnail,
+      previewVideo: courseData.previewVideo,
+      allowDiscussion: courseData.allowDiscussion,
+      enableCertificate: courseData.enableCertificate,
+      enableQuizzes: courseData.enableQuizzes
+    };
+  };
+
+  const handleSaveDraft = async () => {
+    if (!validateCourse()) {
+      showNotification('Please fix the validation errors before saving', 'error');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const courseDataToSave = prepareCourseDataForSave();
+      
+      let result;
+      if (editMode && courseId) {
+        result = await courseService.updateCourse(courseId, courseDataToSave);
+      } else {
+        result = await courseService.createCourse(courseDataToSave, user.uid);
+        if (result.success) {
+          // Navigate to edit mode with the new course ID
+          navigate(`/tutor/course/${result.courseId}/edit`);
+        }
+      }
+      
+      if (result.success) {
+        showNotification('Course saved as draft successfully', 'success');
+      } else {
+        showNotification(result.error || 'Failed to save course', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving course:', error);
+      showNotification('Error saving course', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePublishCourse = async () => {
+    if (!validateCourse()) {
+      showNotification('Please fix the validation errors before publishing', 'error');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const courseDataToSave = prepareCourseDataForSave();
+      
+      let result;
+      if (editMode && courseId) {
+        // Update course first, then publish
+        await courseService.updateCourse(courseId, courseDataToSave);
+        result = await courseService.publishCourse(courseId);
+      } else {
+        // Create course and publish immediately
+        const createResult = await courseService.createCourse(courseDataToSave, user.uid);
+        if (createResult.success) {
+          result = await courseService.publishCourse(createResult.courseId);
+        } else {
+          result = createResult;
+        }
+      }
+      
+      if (result.success) {
+        showNotification('Course published successfully! Students can now enroll.', 'success');
+        setTimeout(() => {
+          navigate('/tutor/courses');
+        }, 2000);
+      } else {
+        showNotification(result.error || 'Failed to publish course', 'error');
+      }
+    } catch (error) {
+      console.error('Error publishing course:', error);
+      showNotification('Error publishing course', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renderBasicInformation = () => (
@@ -653,6 +804,15 @@ const CourseCreator = ({ editMode = false, courseId = null }) => {
     }
   };
 
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress size={60} />
+        <Typography variant="h6" sx={{ ml: 2 }}>Loading course data...</Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box>
       <PageHeader
@@ -664,10 +824,22 @@ const CourseCreator = ({ editMode = false, courseId = null }) => {
           {
             label: 'Save Draft',
             onClick: handleSaveDraft,
-            variant: 'outlined'
+            variant: 'outlined',
+            disabled: saving
           }
         ]}
       />
+
+      {validationErrors.length > 0 && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>Please fix the following errors:</Typography>
+          <ul style={{ margin: 0, paddingLeft: '20px' }}>
+            {validationErrors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
 
       {/* Stepper */}
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -694,17 +866,31 @@ const CourseCreator = ({ editMode = false, courseId = null }) => {
         
         <Box>
           {activeStep === steps.length - 1 ? (
-            <Button
-              variant="contained"
-              onClick={handlePublishCourse}
-              size="large"
-            >
-              {courseData.isPublished ? 'Publish Course' : 'Save as Draft'}
-            </Button>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={handleSaveDraft}
+                size="large"
+                disabled={saving}
+                startIcon={saving ? <CircularProgress size={20} /> : null}
+              >
+                {saving ? 'Saving...' : 'Save as Draft'}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handlePublishCourse}
+                size="large"
+                disabled={saving}
+                startIcon={saving ? <CircularProgress size={20} /> : null}
+              >
+                {saving ? 'Publishing...' : 'Publish Course'}
+              </Button>
+            </Box>
           ) : (
             <Button
               variant="contained"
               onClick={handleNext}
+              disabled={saving}
             >
               Next
             </Button>
@@ -729,6 +915,14 @@ const CourseCreator = ({ editMode = false, courseId = null }) => {
         message={`Are you sure you want to delete this ${itemToDelete?.type}?`}
         confirmText="Delete"
         confirmColor="error"
+      />
+
+      {/* Notification Snackbar */}
+      <NotificationSnackbar
+        open={notification.open}
+        message={notification.message}
+        severity={notification.severity}
+        onClose={() => setNotification({ ...notification, open: false })}
       />
     </Box>
   );

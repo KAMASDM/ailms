@@ -1,5 +1,5 @@
 // src/components/quizzes/QuizCreator.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -44,9 +44,13 @@ import {
 } from '@mui/icons-material';
 import { PageHeader, ConfirmDialog } from '../common';
 import { QUIZ_TYPES } from '../../utils/constants';
+import { useAuth } from '../../hooks/useAuth';
+import quizService from '../../services/quizService';
+import courseService from '../../services/courseService';
 
 const QuizCreator = ({ editMode = false, quizId = null }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [quizData, setQuizData] = useState({
     title: '',
@@ -76,12 +80,42 @@ const QuizCreator = ({ editMode = false, quizId = null }) => {
 
   const [previewDialog, setPreviewDialog] = useState(false);
 
-  // Sample courses for dropdown
-  const courses = [
-    { id: 1, title: 'Deep Learning Fundamentals' },
-    { id: 2, title: 'Computer Vision Basics' },
-    { id: 3, title: 'Natural Language Processing' }
-  ];
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load tutor's courses for dropdown
+  useEffect(() => {
+    loadTutorCourses();
+    if (editMode && quizId) {
+      loadQuizData();
+    }
+  }, [editMode, quizId]);
+
+  const loadTutorCourses = async () => {
+    try {
+      const result = await courseService.getTutorCourses(user.uid);
+      if (result.success) {
+        setCourses(result.courses);
+      }
+    } catch (error) {
+      console.error('Error loading courses:', error);
+    }
+  };
+
+  const loadQuizData = async () => {
+    try {
+      setLoading(true);
+      const result = await quizService.getQuiz(quizId);
+      if (result.success) {
+        setQuizData(result.quiz);
+      }
+    } catch (error) {
+      console.error('Error loading quiz:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setQuizData(prev => ({
@@ -141,10 +175,70 @@ const QuizCreator = ({ editMode = false, quizId = null }) => {
     setDeleteDialog({ open: false, questionIndex: null });
   };
 
-  const handleSaveQuiz = () => {
-    console.log('Saving quiz:', quizData);
-    // Implementation for saving quiz
-    navigate('/tutor/quizzes');
+  const handleSaveQuiz = async () => {
+    try {
+      setSaving(true);
+      
+      if (!quizData.title || !quizData.courseId || quizData.questions.length === 0) {
+        alert('Please fill in all required fields and add at least one question.');
+        return;
+      }
+
+      let result;
+      if (editMode && quizId) {
+        result = await quizService.updateQuiz(quizId, quizData);
+      } else {
+        result = await quizService.createQuiz(quizData, user.uid);
+      }
+
+      if (result.success) {
+        navigate('/tutor/quizzes');
+      } else {
+        alert('Failed to save quiz: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error saving quiz:', error);
+      alert('Error saving quiz. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePublishQuiz = async () => {
+    try {
+      setSaving(true);
+      
+      if (!quizData.title || !quizData.courseId || quizData.questions.length === 0) {
+        alert('Please fill in all required fields and add at least one question.');
+        return;
+      }
+
+      let result;
+      if (editMode && quizId) {
+        // Update quiz first, then publish
+        await quizService.updateQuiz(quizId, { ...quizData, isPublished: true });
+        result = await quizService.publishQuiz(quizId);
+      } else {
+        // Create and publish quiz
+        const createResult = await quizService.createQuiz({ ...quizData, isPublished: true }, user.uid);
+        if (createResult.success) {
+          result = await quizService.publishQuiz(createResult.quizId);
+        } else {
+          result = createResult;
+        }
+      }
+
+      if (result.success) {
+        navigate('/tutor/quizzes');
+      } else {
+        alert('Failed to publish quiz: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error publishing quiz:', error);
+      alert('Error publishing quiz. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getTotalPoints = () => {
